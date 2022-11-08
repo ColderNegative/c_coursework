@@ -1,4 +1,7 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <time.h>
 #include "graphics.h"
 
 #define SCREEN_HEIGHT 400
@@ -9,6 +12,11 @@
 
 #define ANIMATION_DELAY_MS 100
 
+#define MAX_PATH_LENGTH 1000
+
+// random number init
+
+// for maze building
 typedef enum {
     PATH,
     WALL,
@@ -24,6 +32,18 @@ typedef enum {
     end,
 } direction;
 
+// for maze generation
+typedef enum {
+    SOUTH,
+    EAST,
+} cardinal;
+
+typedef enum {
+    HORIZONTAL,
+    VERTICAL,
+} split;
+
+// for maze building and animation
 typedef struct {
     int x;
     int y;
@@ -43,12 +63,18 @@ typedef struct {
 
 void debug();
 board setupBoard(int* board);
-void drawBoard(board board);
+void drawBoard(board maze);
 void drawRobot(robot pathfinder, board maze);
 void animateRobot(int* robo_path, board maze, robot pathfinder);
+int* mazeSolver(board maze);
+int chooseOrientation(int width, int height);
+void divide(int* maze, int x, int y, int width, int height, split orientation);
+
 
 int main(void) {
-    // set screen
+    // init
+    time_t t;
+    srand((unsigned) time(&t));
     setWindowSize(SCREEN_WIDTH, SCREEN_HEIGHT);
 
     debug();
@@ -86,17 +112,16 @@ board setupBoard(int* board_init) {
     }
 
     board final = {temp, box_size, start, end};
-    drawBoard(final);
     return final;
 }
 
-void drawBoard(board board) {
-    int spacing = board.block_size;
+void drawBoard(board maze) {
+    int spacing = maze.block_size;
 
     vec2 current_pos = {SCREEN_MARGIN, SCREEN_MARGIN};
     for (int i = 0; i < MAZE_SIZE; i++) {
         for (int j = 0; j < MAZE_SIZE; j++) {
-            int type = *((board.board+i*MAZE_SIZE) + j);
+            int type = *((maze.board+i*MAZE_SIZE) + j);
             switch (type) {
                 case WALL:
                     setColour(black);
@@ -204,6 +229,100 @@ void animateRobot(int* robo_path, board maze, robot pathfinder) {
     drawRobot(pathfinder, maze);
 }
 
+int* mazeSolver(board maze) {
+    int* path = malloc(sizeof(int)*MAX_PATH_LENGTH);
+
+    vec2 start_arr_pos;
+    vec2 end_arr_pos;
+    for (int i = 0; i < MAZE_SIZE; i++) {
+        for (int j = 0; j < MAZE_SIZE; j++) {
+            int type = *((maze.board+i*MAZE_SIZE) + j);
+            if (type == START) {
+                start_arr_pos.x = i;
+                start_arr_pos.y = j;
+            } else if (type == END) {
+                end_arr_pos.x = i;
+                end_arr_pos.y = j;
+            }
+        }
+    }
+
+    direction current_dir = forward;
+    vec2 current_arr_pos = start_arr_pos;
+    while (true) {}
+
+    return path;
+
+}
+
+int chooseOrientation(int width, int height) {
+    if (width < height) {
+        return HORIZONTAL;
+    } else if (height < width) {
+        return VERTICAL;
+    } else {
+        return (rand() % 2) == 0 ? HORIZONTAL : VERTICAL;
+    }
+}
+
+void divide(int* maze, int x, int y, int width, int height, split orientation) {
+    //printf("recur, %d, %d, %d, %d\n", x, y, width, height);
+    if (width < 2 || height < 2) {
+        return;
+    }
+
+    int horizontal = orientation == HORIZONTAL;
+
+    int wx, wy, px, py;
+    if (width > 2 && height > 2) {
+        // where wall
+        wx = x + (horizontal ? 0 : rand() % (width-2));
+        wy = y + (horizontal ? rand() % (height-2) : 0);
+
+        // where path
+        px = wx + (horizontal ? rand() % width : 0);
+        py = wy + (horizontal ? 0 : rand() % height);
+    } else {
+        wx = x;
+        wy = y;
+        px = wx;
+        py = wy;
+    }
+
+    // what direction will the wall be drawn?
+    int dx = horizontal ? 1 : 0;
+    int dy = horizontal ? 0 : 1;
+
+    // how long will the wall be?
+    int length = horizontal ? width : height;
+
+    // what direction is perpendicular to the wall?
+    int dir = horizontal ? SOUTH : EAST;
+
+    for (int i = 0; i < length; i++) {
+        if (wx != px || wy != py) {
+            int* point = ((maze+wy*MAZE_SIZE) + wx);
+            //printf("%p, %d, %d, %d\n", point, wx, wy, i);
+            *point = WALL;
+        }
+        wx += dx;
+        wy += dy;
+    }
+
+    int nx = x;
+    int ny = y;
+    int w = horizontal ? width : wx-x+1;
+    int h = horizontal ? wy-y+1 : height;
+    divide(maze, nx, ny, w, h, chooseOrientation(w, h));
+
+    nx = horizontal ? x : wx+1;
+    ny = horizontal ? wy+1 : y;
+    w = horizontal ? width : x+width-wx-1;
+    h = horizontal ? y+height-wy-1 : height;
+    divide(maze, nx, ny, w, h, chooseOrientation(w, h));
+
+
+}
 
 void debug() {
     // test maze; MAZE_SIZE must be 11
@@ -221,12 +340,13 @@ void debug() {
         {WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL},
     };
 
+    int test_maze_gen[11][11] = {PATH};
+
     int test_path[5] = {forward, forward, forward, backword, end};
 
-    board test = setupBoard((int*)test_maze);
-    
-    robot pathfinder = {forward, test.start};
-    drawRobot(pathfinder, test);
+    divide((int*)test_maze_gen, 0, 0, MAZE_SIZE, MAZE_SIZE, chooseOrientation(MAZE_SIZE, MAZE_SIZE));
 
-    animateRobot(test_path, test, pathfinder);
+    board test = setupBoard((int*)test_maze_gen);
+    drawBoard(test);
+    
 }
