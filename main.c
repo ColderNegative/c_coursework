@@ -4,349 +4,323 @@
 #include <time.h>
 #include "graphics.h"
 
-#define SCREEN_HEIGHT 400
-#define SCREEN_WIDTH 400
+#define SCREEN_SIZE 400
 #define SCREEN_MARGIN 20
 
-#define MAZE_SIZE 11
+#define MAZE_SIZE 15
 
-#define ANIMATION_DELAY_MS 100
-
-#define MAX_PATH_LENGTH 1000
-
-// random number init
-
-// for maze building
-typedef enum {
-    PATH,
-    WALL,
-    START,
-    END,
-} blockType;
-
-typedef enum {
-    forward,
-    backword,
-    up,
-    down,
-    end,
-} direction;
-
-// for maze generation
-typedef enum {
-    SOUTH,
-    EAST,
-} cardinal;
-
-typedef enum {
-    HORIZONTAL,
-    VERTICAL,
-} split;
-
-// for maze building and animation
-typedef struct {
-    int x;
-    int y;
-} vec2;
+// stack init
+#define CAPACITY MAZE_SIZE*MAZE_SIZE
+int top = -1;
+int stack[CAPACITY];
 
 typedef struct {
-    int* board;
-    int block_size;
-    vec2 start;
-    vec2 end;
-} board;
-
-typedef struct {
-    direction dir;
-    vec2 pos;
-} robot;
+    int row;
+    int column;
+    bool visted;
+    // top, right, bottom, left
+    bool walls[4];
+} cell;
 
 void debug();
-board setupBoard(int* board);
-void drawBoard(board maze);
-void drawRobot(robot pathfinder, board maze);
-void animateRobot(int* robo_path, board maze, robot pathfinder);
-int* mazeSolver(board maze);
-int chooseOrientation(int width, int height);
-void divide(int* maze, int x, int y, int width, int height, split orientation);
 
+// grid functions
+void drawGrid(cell* grid);
+int indexGrid(int i, int j);
+
+// generation algorithm
+int checkNeighborsAlgo(cell* grid, cell current);
+void removeWalls(int index1, int index2, cell* grid);
+void genMaze(cell* grid);
+
+// solving function
+int checkNeighborsSolver(cell* grid, cell current);
+
+
+// stack functions
+void push(int x);
+int pop();
+int peek();
+bool isEmpty();
+bool isFull();
 
 int main(void) {
     // init
     time_t t;
     srand((unsigned) time(&t));
-    setWindowSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+    setWindowSize(SCREEN_SIZE, SCREEN_SIZE);
 
     debug();
 
 }
 
-board setupBoard(int* board_init) {
-    int* temp = board_init;
-
-    //  choose smaller side; make sure board sits in screen size
-    int screen_size;
-    if (SCREEN_HEIGHT < SCREEN_WIDTH) {
-        screen_size = SCREEN_HEIGHT;
-    } else {
-        screen_size = SCREEN_WIDTH;
-    }
-
-    int box_size = (screen_size - SCREEN_MARGIN*2)/MAZE_SIZE;
-    vec2 start;
-    vec2 end;
-
-    vec2 current_pos = {SCREEN_MARGIN, SCREEN_MARGIN};
-    for (int i = 0; i < MAZE_SIZE; i++) {
-        for (int j = 0; j < MAZE_SIZE; j++) {
-            int type = *((board_init+i*MAZE_SIZE) + j);
-            if (type == START) {
-                start = current_pos; 
-            } else if (type == END) {
-                end = current_pos;
-            }
-            current_pos.x += box_size;
+void drawGrid(cell* grid) {
+    int cell_width = (SCREEN_SIZE - SCREEN_MARGIN*2) / MAZE_SIZE;
+    for (int i = 0; i < MAZE_SIZE*MAZE_SIZE; i++) {
+        int x = grid[i].column*cell_width+SCREEN_MARGIN;
+        int y = grid[i].row*cell_width+SCREEN_MARGIN;
+        if (grid[i].visted == true) {
+            setColour(gray);
+            fillRect(x, y, cell_width, cell_width);
         }
-        current_pos.x = SCREEN_MARGIN;
-        current_pos.y += box_size;
-    }
-
-    board final = {temp, box_size, start, end};
-    return final;
-}
-
-void drawBoard(board maze) {
-    int spacing = maze.block_size;
-
-    vec2 current_pos = {SCREEN_MARGIN, SCREEN_MARGIN};
-    for (int i = 0; i < MAZE_SIZE; i++) {
-        for (int j = 0; j < MAZE_SIZE; j++) {
-            int type = *((maze.board+i*MAZE_SIZE) + j);
-            switch (type) {
-                case WALL:
-                    setColour(black);
-                    fillRect(current_pos.x, current_pos.y, spacing, spacing);
-                    break;
-                case START:
-                    setColour(blue);
-                    fillRect(current_pos.x, current_pos.y, spacing, spacing);
-                    break;
-                case PATH:
-                    setColour(black);
-                    drawRect(current_pos.x, current_pos.y, spacing, spacing);
-                    break;
-                case END:
-                    setColour(gray);
-                    fillRect(current_pos.x, current_pos.y, spacing, spacing);
-                    break;
-            }
-            current_pos.x += spacing;
+        if (*(grid[i].walls)){
+            setColour(blue);
+            drawLine(x, y, x+cell_width, y);
         }
-        current_pos.y += spacing;
-        current_pos.x = SCREEN_MARGIN;
-    }
-}
-
-void drawRobot(robot pathfinder, board maze) {
-    int bounds = maze.block_size;
-    vec2 pos = pathfinder.pos;
-    int xs[3];
-    int ys[3];
-    switch (pathfinder.dir) {
-        case forward:
-            xs[0] = pos.x;
-            xs[1] = pos.x+bounds;
-            xs[2] = pos.x;
-            ys[0] = pos.y;
-            ys[1] = pos.y+0.5*bounds;
-            ys[2] = pos.y+bounds;
-            break;
-        case backword:
-            xs[0] = pos.x+bounds;
-            xs[1] = pos.x;
-            xs[2] = pos.x+bounds;
-            ys[0] = pos.y;
-            ys[1] = pos.y+0.5*bounds;
-            ys[2] = pos.y+bounds;
-            break;
-        case down:
-            xs[0] = pos.x;
-            xs[1] = pos.x+0.5*bounds;
-            xs[2] = pos.x+bounds;
-            ys[0] = pos.y;
-            ys[1] = pos.y+bounds;
-            ys[2] = pos.y;
-            break;
-        case up:
-            xs[0] = pos.x;
-            xs[1] = pos.x+0.5*bounds;
-            xs[2] = pos.x+bounds;
-            ys[0] = pos.y+bounds;
-            ys[1] = pos.y;
-            ys[2] = pos.y+bounds;
-            break;
-        case end:
-            break;
-
-    }
-    setColour(red);
-    fillPolygon(3, (int*)xs, (int*)ys);
-}
-
-void animateRobot(int* robo_path, board maze, robot pathfinder) {
-    int bounds = maze.block_size;
-    vec2 start = maze.start;
-    while(*robo_path++ != end) {
-        switch (*robo_path) {
-            case forward:
-                pathfinder.pos.x += bounds;
-                pathfinder.dir = forward;
-                drawRobot(pathfinder, maze);
-                break;
-            case backword:
-                pathfinder.pos.x -= bounds;
-                pathfinder.dir = backword;
-                drawRobot(pathfinder, maze);
-                break;
-            case up:
-                pathfinder.pos.y -= bounds;
-                pathfinder.dir = up;
-                drawRobot(pathfinder, maze);
-                break;
-            case down:
-                pathfinder.pos.y += bounds;
-                pathfinder.dir = down;
-                drawRobot(pathfinder, maze);
-                break;
-            case end:
-                break;
+        if (*(grid[i].walls+1)) {
+            setColour(blue);
+            drawLine(x+cell_width, y, x+cell_width, y+cell_width);
         }
-        sleep(ANIMATION_DELAY_MS);
-        setColour(white);
-        fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-        drawBoard(maze);
+        if (*(grid[i].walls+2)) {
+            setColour(blue);
+            drawLine(x, y+cell_width, x+cell_width, y+cell_width);
+        }
+        if (*(grid[i].walls+3)) {
+            setColour(blue);
+            drawLine(x, y, x, y+cell_width);
+        }
     }
-    drawRobot(pathfinder, maze);
 }
 
-int* mazeSolver(board maze) {
-    int* path = malloc(sizeof(int)*MAX_PATH_LENGTH);
+int indexGrid(int i, int j) {
+    if (i < 0 || j < 0 || i > MAZE_SIZE-1 || j > MAZE_SIZE-1) {
+        return -1;
+    }
 
-    vec2 start_arr_pos;
-    vec2 end_arr_pos;
-    for (int i = 0; i < MAZE_SIZE; i++) {
-        for (int j = 0; j < MAZE_SIZE; j++) {
-            int type = *((maze.board+i*MAZE_SIZE) + j);
-            if (type == START) {
-                start_arr_pos.x = i;
-                start_arr_pos.y = j;
-            } else if (type == END) {
-                end_arr_pos.x = i;
-                end_arr_pos.y = j;
+    return i + j * MAZE_SIZE;
+}
+
+int checkNeighborsAlgo(cell* grid, cell current) {
+    // top right bottom left
+    bool neighbors[4] = {false};
+    int neigbors_count = 0;
+
+    int top = indexGrid(current.column, current.row+1);
+    int right = indexGrid(current.column+1, current.row);
+    int bottom = indexGrid(current.column, current.row-1);
+    int left = indexGrid(current.column-1, current.row);
+    
+    //printf("%d, %d, %d, %d\n", top, right, bottom, left);
+    if (top != -1 && !grid[top].visted) {
+        //printf("top\n");
+        neigbors_count++;
+        neighbors[0] = true;
+    }
+    if (right != -1 && !grid[right].visted) {
+        //printf("right\n");
+        neigbors_count++;
+        neighbors[1] = true;
+    }
+    if (bottom != -1 && !grid[bottom].visted) {
+        //printf("bottom\n");
+        neigbors_count++;
+        neighbors[2] = true;
+    }
+    if (left != -1 && !grid[left].visted) {
+        //printf("left\n");
+        neigbors_count++;
+        neighbors[3] = true;
+    }
+    
+    if (neigbors_count > 0) {
+        int select = rand() % neigbors_count + 1;
+        int select_true = 0;
+        for (int i = 0; i < 4; i++) {
+            if (neighbors[i] == true) {
+                select_true++;
+            } 
+            if (select_true == select) {
+                switch (i) {
+                    case 0:
+                        return top;
+                        break;
+                    case 1:
+                        return right;
+                        break;
+                    case 2:
+                        return bottom;
+                        break;
+                    case 3:
+                        return left;
+                        break;
+                }
             }
         }
     }
 
-    direction current_dir = forward;
-    vec2 current_arr_pos = start_arr_pos;
-    while (true) {}
-
-    return path;
+    return indexGrid(current.column, current.row);
 
 }
 
-int chooseOrientation(int width, int height) {
-    if (width < height) {
-        return HORIZONTAL;
-    } else if (height < width) {
-        return VERTICAL;
-    } else {
-        return (rand() % 2) == 0 ? HORIZONTAL : VERTICAL;
+bool cellEqual(cell one, cell two) {
+    if (one.row == two.row && one.column == two.column) {
+        return true;
+    }
+    return false;
+}
+
+void removeWalls(int index1, int index2, cell* grid) {
+    int x = grid[index1].column - grid[index2].column;
+    //printf("%d\n", x);
+    if (x == 1) {
+        *(grid[index1].walls+3) = false;
+        *(grid[index2].walls+1) = false;
+    } else if (x == -1) {
+        *(grid[index1].walls+1) = false;
+        *(grid[index2].walls+3) = false;
+    }
+
+    int y = grid[index1].row - grid[index2].row;
+    if (y == 1) {
+        *(grid[index1].walls) = false;
+        *(grid[index2].walls+2) = false;
+    } else if (y == -1) {
+        *(grid[index1].walls+2) = false;
+        *(grid[index2].walls) = false;
     }
 }
 
-void divide(int* maze, int x, int y, int width, int height, split orientation) {
-    //printf("recur, %d, %d, %d, %d\n", x, y, width, height);
-    if (width < 2 || height < 2) {
+void genMaze(cell* grid) {
+    int current = indexGrid(grid[0].column, grid[0].row);
+    while (true) {
+        drawGrid(grid);
+
+        grid[current].visted = true;
+        int next = checkNeighborsAlgo(grid, grid[current]);
+        if (!(current == next)) {
+            grid[next].visted = true;
+            push(current);
+            removeWalls(current, next, grid);
+            current = next;
+        } else if (!isEmpty()){
+            current = pop();
+        } else {
+            break;
+        }
+
+        sleep(20);
+    }
+}
+
+int checkNeighborsSolver(cell* grid, cell current) {
+    // top right bottom left
+    bool neighbors[4] = {false};
+    int neigbors_count = 0;
+
+    int top = indexGrid(current.column, current.row+1);
+    int right = indexGrid(current.column+1, current.row);
+    int bottom = indexGrid(current.column, current.row-1);
+    int left = indexGrid(current.column-1, current.row);
+    
+    //printf("%d, %d, %d, %d\n", top, right, bottom, left);
+    if (top != -1 && current.walls[0] != true) {
+        //printf("top\n");
+        neigbors_count++;
+        neighbors[0] = true;
+    }
+    if (right != -1 && current.walls[1] != true) {
+        //printf("right\n");
+        neigbors_count++;
+        neighbors[1] = true;
+    }
+    if (bottom != -1 && current.walls[2] != true) {
+        //printf("bottom\n");
+        neigbors_count++;
+        neighbors[2] = true;
+    }
+    if (left != -1 && current.walls[3] != true) {
+        //printf("left\n");
+        neigbors_count++;
+        neighbors[3] = true;
+    }
+    
+    if (neigbors_count > 0) {
+        int select = rand() % neigbors_count + 1;
+        int select_true = 0;
+        for (int i = 0; i < 4; i++) {
+            if (neighbors[i] == true) {
+                select_true++;
+            } 
+            if (select_true == select) {
+                switch (i) {
+                    case 0:
+                        return top;
+                        break;
+                    case 1:
+                        return right;
+                        break;
+                    case 2:
+                        return bottom;
+                        break;
+                    case 3:
+                        return left;
+                        break;
+                }
+            }
+        }
+    }
+
+    return indexGrid(current.column, current.row);
+
+
+}
+
+void push(int x) {
+    if (top == CAPACITY-1) {
         return;
-    }
-
-    int horizontal = orientation == HORIZONTAL;
-
-    int wx, wy, px, py;
-    if (width > 2 && height > 2) {
-        // where wall
-        wx = x + (horizontal ? 0 : rand() % (width-2));
-        wy = y + (horizontal ? rand() % (height-2) : 0);
-
-        // where path
-        px = wx + (horizontal ? rand() % width : 0);
-        py = wy + (horizontal ? 0 : rand() % height);
     } else {
-        wx = x;
-        wy = y;
-        px = wx;
-        py = wy;
+        top++;
+        stack[top] = x;
     }
+}
 
-    // what direction will the wall be drawn?
-    int dx = horizontal ? 1 : 0;
-    int dy = horizontal ? 0 : 1;
-
-    // how long will the wall be?
-    int length = horizontal ? width : height;
-
-    // what direction is perpendicular to the wall?
-    int dir = horizontal ? SOUTH : EAST;
-
-    for (int i = 0; i < length; i++) {
-        if (wx != px || wy != py) {
-            int* point = ((maze+wy*MAZE_SIZE) + wx);
-            //printf("%p, %d, %d, %d\n", point, wx, wy, i);
-            *point = WALL;
-        }
-        wx += dx;
-        wy += dy;
+int pop() {
+    if (top == -1) {
+        return -1;
+    } else {
+        int x = stack[top];
+        top--;
+        return x;
     }
+}
 
-    int nx = x;
-    int ny = y;
-    int w = horizontal ? width : wx-x+1;
-    int h = horizontal ? wy-y+1 : height;
-    divide(maze, nx, ny, w, h, chooseOrientation(w, h));
+int peek() {
+    return stack[top];
+}
 
-    nx = horizontal ? x : wx+1;
-    ny = horizontal ? wy+1 : y;
-    w = horizontal ? width : x+width-wx-1;
-    h = horizontal ? y+height-wy-1 : height;
-    divide(maze, nx, ny, w, h, chooseOrientation(w, h));
+bool isEmpty() {
+    if (top == -1) {
+        return true;
+    } else {
+        return false;
+    }
+}
 
-
+bool isFull() {
+    if (top == CAPACITY-1) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void debug() {
-    // test maze; MAZE_SIZE must be 11
-    int test_maze[11][11] = {
-        {WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL},
-        {START, PATH, PATH, PATH, PATH, PATH, WALL, PATH, PATH, PATH, WALL},
-        {WALL, PATH, WALL, WALL, WALL, WALL, WALL, PATH, WALL, PATH, WALL},
-        {WALL, PATH, PATH, PATH, PATH, PATH, WALL, PATH, WALL, PATH, WALL},
-        {WALL, PATH, WALL, WALL, WALL, PATH, WALL, PATH, WALL, PATH, WALL},
-        {WALL, PATH, WALL, PATH, WALL, PATH, PATH, PATH, WALL, PATH, WALL},
-        {WALL, PATH, WALL, PATH, WALL, WALL, WALL, WALL, WALL, PATH, WALL},
-        {WALL, PATH, WALL, PATH, PATH, PATH, WALL, PATH, WALL, PATH, WALL},
-        {WALL, PATH, WALL, PATH, WALL, PATH, WALL, PATH, WALL, PATH, WALL},
-        {WALL, PATH, WALL, PATH, WALL, PATH, WALL, PATH, PATH, PATH, END},
-        {WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL, WALL},
-    };
+    cell grid[MAZE_SIZE*MAZE_SIZE];
+    int index = 0;
+    for (int i = 0; i < MAZE_SIZE; i++) {
+        for (int j = 0; j < MAZE_SIZE; j++) {
+            cell new = {
+                i,
+                j,
+                false,
+                {true, true, true, true},
+            };
+            grid[index] = new;
+            index++;
+        }
+    }
 
-    int test_maze_gen[11][11] = {PATH};
+    genMaze(grid);
 
-    int test_path[5] = {forward, forward, forward, backword, end};
-
-    divide((int*)test_maze_gen, 0, 0, MAZE_SIZE, MAZE_SIZE, chooseOrientation(MAZE_SIZE, MAZE_SIZE));
-
-    board test = setupBoard((int*)test_maze_gen);
-    drawBoard(test);
-    
 }
+
