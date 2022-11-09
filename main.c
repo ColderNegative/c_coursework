@@ -46,7 +46,7 @@ int checkNeighborsAlgo(cell* grid, cell current);
 void removeWalls(int index1, int index2, cell* grid);
 void genMaze(cell* grid);
 
-// solving function
+// solving algorithm
 int checkNeighborsSolver(cell* grid, cell current);
 void solveMaze(cell* grid);
 
@@ -58,6 +58,7 @@ bool atMarker(robot robo);
 bool canMoveForward(robot robo, cell* grid);
 void drawRobot(robot robo);
 bool neighborsExist(robot robo, cell* grid);
+void animateRobot(robot robo, cell* grid);
 
 // stack functions
 void push(int x);
@@ -72,8 +73,34 @@ int main(void) {
     srand((unsigned) time(&t));
     setWindowSize(SCREEN_SIZE, SCREEN_SIZE);
 
-    debug();
+    //debug();
+   
+    cell grid[MAZE_SIZE*MAZE_SIZE];
+    int index = 0;
+    for (int i = 0; i < MAZE_SIZE; i++) {
+        for (int j = 0; j < MAZE_SIZE; j++) {
+            cell new = {
+                i,
+                j,
+                false,
+                {true, true, true, true},
+            };
+            grid[index] = new;
+            index++;
+        }
+    }
 
+    drawGrid(grid);
+    genMaze(grid);
+    solveMaze(grid);
+
+    robot bob = {
+        0,
+        0,
+        EAST,
+    };
+
+    animateRobot(bob, grid);
 }
 
 void drawGrid(cell* grid) {
@@ -430,6 +457,28 @@ void drawRobot(robot robo) {
     fillRect(x, y, box_width/3, box_width/3);
 }
 
+void animateRobot(robot bob, cell* grid) {
+    while (!atMarker(bob)) {
+
+        grid[indexGrid(bob.x, bob.y)].visted = true;
+        if (canMoveForward(bob, grid)) {
+            push(indexGrid(bob.x, bob.y));
+            forward(&bob);
+        } else if (neighborsExist(bob, grid)) {
+            left(&bob);
+        } else {
+            int back_index = pop();
+            bob.x = grid[back_index].column;
+            bob.y = grid[back_index].row;
+        }
+
+        drawGrid(grid);
+        drawRobot(bob);
+        sleep(20);
+
+    }
+}
+
 void push(int x) {
     if (top == CAPACITY-1) {
         return;
@@ -495,24 +544,6 @@ void debug() {
         EAST,
     };
 
-    while (!atMarker(bob)) {
-
-        grid[indexGrid(bob.x, bob.y)].visted = true;
-        if (canMoveForward(bob, grid)) {
-            push(indexGrid(bob.x, bob.y));
-            forward(&bob);
-        } else if (neighborsExist(bob, grid)) {
-            left(&bob);
-        } else {
-            int back_index = pop();
-            bob.x = grid[back_index].column;
-            bob.y = grid[back_index].row;
-        }
-
-        drawGrid(grid);
-        drawRobot(bob);
-        sleep(20);
-
-    }
+    animateRobot(bob, grid);
 }
 
