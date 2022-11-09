@@ -7,12 +7,19 @@
 #define SCREEN_SIZE 400
 #define SCREEN_MARGIN 20
 
-#define MAZE_SIZE 15
+#define MAZE_SIZE 20 
 
 // stack init
 #define CAPACITY MAZE_SIZE*MAZE_SIZE
 int top = -1;
 int stack[CAPACITY];
+
+typedef enum{
+    NORTH,
+    SOUTH,
+    EAST,
+    WEST,
+} direction;
 
 typedef struct {
     int row;
@@ -21,6 +28,12 @@ typedef struct {
     // top, right, bottom, left
     bool walls[4];
 } cell;
+
+typedef struct {
+    int x;
+    int y;
+    int dir;
+} robot;
 
 void debug();
 
@@ -35,7 +48,16 @@ void genMaze(cell* grid);
 
 // solving function
 int checkNeighborsSolver(cell* grid, cell current);
+void solveMaze(cell* grid);
 
+// robot functions
+void forward(robot* robo);
+void left(robot* robo);
+void right(robot* robo);
+bool atMarker(robot robo);
+bool canMoveForward(robot robo, cell* grid);
+void drawRobot(robot robo);
+bool neighborsExist(robot robo, cell* grid);
 
 // stack functions
 void push(int x);
@@ -61,6 +83,9 @@ void drawGrid(cell* grid) {
         int y = grid[i].row*cell_width+SCREEN_MARGIN;
         if (grid[i].visted == true) {
             setColour(gray);
+            fillRect(x, y, cell_width, cell_width);
+        } else {
+            setColour(red);
             fillRect(x, y, cell_width, cell_width);
         }
         if (*(grid[i].walls)){
@@ -207,28 +232,29 @@ int checkNeighborsSolver(cell* grid, cell current) {
     bool neighbors[4] = {false};
     int neigbors_count = 0;
 
+    //printf("%d, %d\n", current.row, current.column);
     int top = indexGrid(current.column, current.row+1);
     int right = indexGrid(current.column+1, current.row);
     int bottom = indexGrid(current.column, current.row-1);
     int left = indexGrid(current.column-1, current.row);
     
     //printf("%d, %d, %d, %d\n", top, right, bottom, left);
-    if (top != -1 && current.walls[0] != true) {
+    if (top != -1 && *(current.walls+2) != true && grid[top].visted) {
         //printf("top\n");
         neigbors_count++;
         neighbors[0] = true;
     }
-    if (right != -1 && current.walls[1] != true) {
+    if (right != -1 && *(current.walls+1) != true && grid[right].visted) {
         //printf("right\n");
         neigbors_count++;
         neighbors[1] = true;
     }
-    if (bottom != -1 && current.walls[2] != true) {
+    if (bottom != -1 && *(current.walls) != true && grid[bottom].visted) {
         //printf("bottom\n");
         neigbors_count++;
         neighbors[2] = true;
     }
-    if (left != -1 && current.walls[3] != true) {
+    if (left != -1 && *(current.walls+3) != true && grid[left].visted) {
         //printf("left\n");
         neigbors_count++;
         neighbors[3] = true;
@@ -263,6 +289,145 @@ int checkNeighborsSolver(cell* grid, cell current) {
     return indexGrid(current.column, current.row);
 
 
+}
+
+void solveMaze(cell* grid) {
+    int current = indexGrid(grid[0].column, grid[0].row);
+    int end = MAZE_SIZE*MAZE_SIZE-1; 
+
+    while (true) {
+        grid[current].visted = false;
+        int next = checkNeighborsSolver(grid, grid[current]);
+        if (current != next) {
+            push(current);
+            current = next;
+        } else {
+            current = pop();
+        }
+        
+        drawGrid(grid);
+
+        if (current == end) {
+            grid[next].visted = false;
+            drawGrid(grid);
+            break;
+        }
+    }
+}
+
+void forward(robot* robo) {
+    switch (robo->dir) {
+        case NORTH:
+            robo->y-=1;
+            break;
+        case SOUTH:
+            robo->y+=1;
+            break;
+        case EAST:
+            robo->x+=1;
+            break;
+        case WEST:
+            robo->x-=1;
+            break;
+    }
+}
+void left(robot* robo) {
+    switch (robo->dir) {
+        case NORTH:
+            robo->dir = WEST;
+            break;
+        case SOUTH:
+            robo->dir = EAST;
+            break;
+        case EAST:
+            robo->dir = NORTH;
+            break;
+        case WEST:
+            robo->dir = SOUTH;
+            break;
+    }
+}
+void right(robot* robo) {
+    switch (robo->dir) {
+        case NORTH:
+            robo->dir = EAST;
+            break;
+        case SOUTH:
+            robo->dir = WEST;
+            break;
+        case EAST:
+            robo->dir = SOUTH;
+            break;
+        case WEST:
+            robo->dir = NORTH;
+            break;
+    }
+}
+bool atMarker(robot robo) {
+    if (robo.x == MAZE_SIZE-1 && robo.y == MAZE_SIZE-1) {
+        return true;
+    }
+    return false;
+}
+bool canMoveForward(robot robo, cell* grid) {
+    cell up = grid[indexGrid(robo.x, robo.y-1)];
+    cell down = grid[indexGrid(robo.x, robo.y+1)];
+    cell left = grid[indexGrid(robo.x-1, robo.y)];
+    cell right = grid[indexGrid(robo.x+1, robo.y)];
+    cell current = grid[indexGrid(robo.x, robo.y)];
+    switch (robo.dir) {
+        case NORTH:
+            if (!current.walls[0] && !up.visted) {
+                return true;
+            }
+            break;
+        case SOUTH:
+            if (!current.walls[2] && !down.visted) {
+                return true;
+            }
+            break;
+        case EAST:
+            if (!current.walls[1] && !right.visted) {
+                return true;
+            }
+            break;
+        case WEST:
+            if (!current.walls[3] && !left.visted) {
+                return true;
+            }
+            break;
+    }
+    return false;
+}
+
+bool neighborsExist(robot robo, cell* grid) {
+    cell up = grid[indexGrid(robo.x, robo.y-1)];
+    cell down = grid[indexGrid(robo.x, robo.y+1)];
+    cell left = grid[indexGrid(robo.x-1, robo.y)];
+    cell right = grid[indexGrid(robo.x+1, robo.y)];
+    cell current = grid[indexGrid(robo.x, robo.y)];
+    bool final = false;
+    if (!current.walls[0] && !up.visted) {
+        final = true;
+    }
+    if (!current.walls[2] && !down.visted) {
+        final = true;
+    }
+    if (!current.walls[1] && !right.visted) {
+        final = true;
+    }
+    if (!current.walls[3] && !left.visted) {
+        final = true;
+    }
+    return final;
+}
+
+void drawRobot(robot robo) {
+    int box_width = (SCREEN_SIZE - SCREEN_MARGIN*2)/MAZE_SIZE;
+    int x = robo.x * box_width + SCREEN_MARGIN + box_width/3;
+    int y = robo.y * box_width + SCREEN_MARGIN + box_width/3;
+    setColour(green);
+    fillRect(x, y, box_width/3, box_width/3);
 }
 
 void push(int x) {
@@ -320,7 +485,34 @@ void debug() {
         }
     }
 
+    drawGrid(grid);
     genMaze(grid);
+    solveMaze(grid);
+    //printf("%d\n", top);
+    robot bob = {
+        0,
+        0,
+        EAST,
+    };
 
+    while (!atMarker(bob)) {
+
+        grid[indexGrid(bob.x, bob.y)].visted = true;
+        if (canMoveForward(bob, grid)) {
+            push(indexGrid(bob.x, bob.y));
+            forward(&bob);
+        } else if (neighborsExist(bob, grid)) {
+            left(&bob);
+        } else {
+            int back_index = pop();
+            bob.x = grid[back_index].column;
+            bob.y = grid[back_index].row;
+        }
+
+        drawGrid(grid);
+        drawRobot(bob);
+        sleep(20);
+
+    }
 }
 
