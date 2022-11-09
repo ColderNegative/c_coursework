@@ -9,8 +9,8 @@ the DFS algorithm to navigate the path fast.
 
 ### Compile and Running the Program
  - This command can be used to compile and run the program
-$ gcc main.c graphics.c && ./a.out | java -jar drawapp-2.0.jar
+> $ gcc main.c graphics.c && ./a.out | java -jar drawapp-2.0.jar
 
  - If wish just to compile the code, the following can be used
-$ gcc main.c graphics.c
+> $ gcc main.c graphics.c
  - This will compile to an executable a.out
